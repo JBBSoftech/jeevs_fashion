@@ -971,7 +971,7 @@ class ApiConfig {
 
   static String get baseUrl => dotenv.env['API_BASE'] ?? 'http://localhost:5000';
 
-  static const String adminObjectId = 'ADMIN_OBJECT_ID_HERE'; // Will be replaced during publish
+  static const String adminObjectId = '69b3da63f65d7336cfc7dc60'; // Will be replaced during publish
 
   static const String appId = 'APP_ID_HERE'; // Will be replaced during publish
 
@@ -1055,11 +1055,37 @@ class AdminManager {
 
     if (_currentAdminId != null) return _currentAdminId!;
 
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final storedAdminId = prefs.getString('admin_id');
+      if (storedAdminId != null && storedAdminId.trim().isNotEmpty) {
+        _currentAdminId = storedAdminId;
+        print('✅ Admin ID locked: ${storedAdminId}');
+        return storedAdminId;
+      }
+    } catch (e) {
+      // ignore and fall back
+    }
+
 
 
     // Immutable single source of truth: embedded at publish time
 
     final adminId = ApiConfig.adminObjectId;
+
+    final bool isPlaceholder = adminId.trim().isEmpty || adminId == '69b3da63f65d7336cfc7dc60';
+    if (isPlaceholder) {
+      final detectedAdminId = await _autoDetectAdminId();
+      if (detectedAdminId != null && detectedAdminId.isNotEmpty) {
+        _currentAdminId = detectedAdminId;
+        print('✅ Admin ID locked: ${detectedAdminId}');
+        return detectedAdminId;
+      }
+
+      _currentAdminId = '';
+      print('✅ Admin ID locked: ');
+      return _currentAdminId!;
+    }
 
     assert(
 
@@ -1100,6 +1126,11 @@ class AdminManager {
       if (response.statusCode == 200) {
 
         final data = json.decode(response.body);
+
+        final returnedAppId = data is Map ? data['appId']?.toString() : null;
+        if (returnedAppId != null && returnedAppId.trim().isNotEmpty) {
+          await prefs.setString('app_id', returnedAppId);
+        }
 
         if (data['success'] == true && data['data'] != null) {
 
@@ -1185,15 +1216,38 @@ class _SplashScreenState extends State<SplashScreen> {
 
       print('🔍 Splash screen using admin ID: ${adminId}');
 
+      final bool isAdminIdValid = adminId.trim().isNotEmpty && adminId != '69b3da63f65d7336cfc7dc60';
+      if (!isAdminIdValid) {
+        if (mounted) {
+          setState(() {
+            _appName = SessionManager.appName;
+          });
+        }
 
+        await Future.delayed(const Duration(seconds: 3));
+
+        if (mounted) {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const SignInPage()),
+          );
+        }
+        return;
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final storedAppId = prefs.getString('app_id');
+      final String appIdFromConfig = ApiConfig.appId;
+      final bool isConfigAppIdValid = appIdFromConfig.trim().isNotEmpty && appIdFromConfig != 'APP_ID_HERE';
+      final String? appId = isConfigAppIdValid ? appIdFromConfig : (storedAppId != null && storedAppId.trim().isNotEmpty ? storedAppId : null);
 
       // Load admin splash config for this fixed adminId
 
-      final response = await http.get(
+      final Uri splashUri = appId == null
+          ? Uri.parse('http://192.168.0.7:5000/api/admin/splash?adminId=${adminId}')
+          : Uri.parse('http://192.168.0.7:5000/api/admin/splash?adminId=${adminId}&appId=${appId}');
 
-        Uri.parse('${dotenv.env['API_BASE'] ?? 'http://localhost:5000'}/api/admin/splash?adminId=${adminId}&appId=${ApiConfig.appId}'),
-
-      );
+      final response = await http.get(splashUri);
 
       
 
@@ -1469,6 +1523,8 @@ class _SignInPageState extends State<SignInPage> {
 
           final user = data['user'];
 
+          final String? userAdminId = user is Map ? user['adminId']?.toString() : null;
+
           final userId = (user is Map)
 
               ? (user['_id']?.toString() ?? user['id']?.toString())
@@ -1478,6 +1534,11 @@ class _SignInPageState extends State<SignInPage> {
           if (token != null && token.isNotEmpty && userId != null && userId.isNotEmpty) {
 
             await SessionManager.bindAuth(userId: userId, token: token);
+
+            final prefs = await SharedPreferences.getInstance();
+            if (userAdminId != null && userAdminId.trim().isNotEmpty) {
+              await prefs.setString('admin_id', userAdminId);
+            }
 
           }
 
