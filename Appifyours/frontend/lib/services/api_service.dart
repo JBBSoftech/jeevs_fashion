@@ -892,53 +892,9 @@ class ApiService {
       print('ApiService: Subscription plans response body: ${response.body}');
       
       if (response.statusCode == 200) {
-        final dynamic decoded = jsonDecode(response.body);
-        final List<dynamic> plans = decoded is List
-            ? decoded
-            : (decoded is Map<String, dynamic> && decoded['data'] is List
-                ? decoded['data']
-                : <dynamic>[]);
-
+        final List<dynamic> plans = jsonDecode(response.body);
         print('ApiService: Raw plans data: $plans');
-
-        final formattedPlans = plans.map<Map<String, dynamic>>((dynamic rawPlan) {
-          final Map<String, dynamic> plan = rawPlan is Map
-              ? Map<String, dynamic>.from(rawPlan as Map)
-              : <String, dynamic>{};
-
-          final dynamic rawFeatures = plan['features'];
-          final List<String> normalizedFeatures;
-          if (rawFeatures is List) {
-            normalizedFeatures = rawFeatures.map((e) => e.toString()).toList();
-          } else if (rawFeatures is String) {
-            final String trimmed = rawFeatures.trim();
-            if (trimmed.contains('|')) {
-              normalizedFeatures = trimmed
-                  .split('|')
-                  .map((e) => e.trim())
-                  .where((e) => e.isNotEmpty)
-                  .toList();
-            } else if (trimmed.contains(',')) {
-              normalizedFeatures = trimmed
-                  .split(',')
-                  .map((e) => e.trim())
-                  .where((e) => e.isNotEmpty)
-                  .toList();
-            } else if (trimmed.isEmpty) {
-              normalizedFeatures = <String>[];
-            } else {
-              normalizedFeatures = <String>[trimmed];
-            }
-          } else {
-            normalizedFeatures = <String>[];
-          }
-
-          return {
-            ...plan,
-            'features': normalizedFeatures,
-          };
-        }).toList();
-
+        final formattedPlans = plans.map<Map<String, dynamic>>((plan) => Map<String, dynamic>.from(plan)).toList();
         print('ApiService: Formatted plans: $formattedPlans');
         return formattedPlans;
       } else {
